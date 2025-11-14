@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamPixel-MH - MetaHuman Viewer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="container">
+        <div id="header">
+            <h1>StreamPixel-MH</h1>
+            <p>Pixel Streaming - MetaHuman Viewer</p>
+        </div>
+        
+        <div id="player-container">
+            <video id="video-player" autoplay playsinline></video>
+            <div id="overlay">
+                <div id="status">Conectando...</div>
+            </div>
+        </div>
+        
+        <div id="controls">
+            <div class="control-group">
+                <button id="connect-btn" class="btn btn-primary">Conectar</button>
+                <button id="disconnect-btn" class="btn btn-danger" disabled>Desconectar</button>
+            </div>
+            
+            <div class="control-group">
+                <label for="mic-toggle" class="control-label">
+                    <input type="checkbox" id="mic-toggle">
+                    Micrófono
+                </label>
+                <div id="mic-status" class="status-indicator"></div>
+            </div>
+            
+            <div class="control-group">
+                <label class="control-label">Estadísticas:</label>
+                <div id="stats">
+                    <div>Estado: <span id="connection-status">Desconectado</span></div>
+                    <div>Latencia: <span id="latency">-</span> ms</div>
+                    <div>Bitrate: <span id="bitrate">-</span> kbps</div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="footer">
+            <p>Controles: Click en la pantalla para interactuar | WASD para movimiento</p>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>

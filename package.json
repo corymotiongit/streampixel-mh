@@ -1,0 +1,27 @@
+{
+  "name": "streampixel-mh",
+  "version": "1.0.0",
+  "description": "Servidor local de Pixel Streaming para deployar MetaHumans de Unreal Engine vía web",
+  "main": "cirrus.js",
+  "scripts": {
+    "start": "node cirrus.js",
+    "dev": "node cirrus.js --debug",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": [
+    "pixel-streaming",
+    "unreal-engine",
+    "metahuman",
+    "webrtc",
+    "signaling-server"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.14.2",
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
