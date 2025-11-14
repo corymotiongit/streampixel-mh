@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaHuman Pixel Streaming</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="app-container">
+        <!-- Estado de conexión -->
+        <div id="connection-status" class="status-banner">
+            <span id="status-text">Conectando...</span>
+        </div>
+
+        <!-- Contenedor del video stream -->
+        <div id="video-container">
+            <video id="stream-video" autoplay muted playsinline></video>
+
+            <!-- Overlay de carga -->
+            <div id="loading-overlay">
+                <div class="spinner"></div>
+                <p>Conectando al MetaHuman...</p>
+            </div>
+        </div>
+
+        <!-- Controles minimalistas -->
+        <div id="controls">
+            <button id="mic-toggle" class="control-btn" disabled>
+                <svg id="mic-on-icon" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+                <svg id="mic-off-icon" class="icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+                <span id="mic-status">Activar Micrófono</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Configuración desde variables de entorno o defaults -->
+    <script>
+        window.SIGNALING_SERVER = window.location.hostname;
+        window.SIGNALING_PORT = 80;
+        window.USE_SSL = window.location.protocol === 'https:';
+    </script>
+
+    <script src="js/app.js" type="module"></script>
+</body>
+</html>

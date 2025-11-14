@@ -1,0 +1,22 @@
+{
+  "name": "metahuman-pixel-streaming",
+  "version": "1.0.0",
+  "description": "Simplified Pixel Streaming setup for MetaHuman web deployment",
+  "main": "scripts/start.js",
+  "scripts": {
+    "start": "node scripts/start.js",
+    "stop": "node scripts/stop.js",
+    "setup": "node scripts/setup.js"
+  },
+  "keywords": [
+    "unreal-engine",
+    "pixel-streaming",
+    "metahuman",
+    "webrtc"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

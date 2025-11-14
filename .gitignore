@@ -1,0 +1,32 @@
+# Variables de entorno
+.env
+
+# Archivos de procesos
+scripts/.pids.json
+
+# Dependencias de Node.js
+node_modules/
+
+# Infraestructura de Pixel Streaming de Epic
+PixelStreamingInfrastructure/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Archivos temporales
+tmp/
+temp/
+*.tmp
