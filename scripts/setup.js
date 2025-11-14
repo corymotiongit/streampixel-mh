@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 
 /**
- * Script de configuración inicial
- * Ayuda a preparar el entorno de Pixel Streaming
+ * Script de setup simplificado
+ * Evita compilar el monorepo - usa Cirrus pre-compilado
  */
 
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 
 const colors = {
     reset: '\x1b[0m',
@@ -19,188 +18,147 @@ const colors = {
     bold: '\x1b[1m'
 };
 
-class Setup {
-    constructor() {
-        this.rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout
-        });
-        this.config = {};
+function log(message, color = 'reset') {
+    console.log(`${colors[color]}${message}${colors.reset}`);
+}
+
+async function main() {
+    log('\n==============================================', 'blue');
+    log('  SETUP SIMPLIFICADO - PIXEL STREAMING', 'bold');
+    log('==============================================\n', 'blue');
+
+    // 1. Verificar Node.js
+    log('1. Verificando Node.js...', 'blue');
+    try {
+        const version = execSync('node --version', { encoding: 'utf8' }).trim();
+        log(`   ✓ ${version}`, 'green');
+    } catch (error) {
+        log('   ✗ Node.js no instalado', 'red');
+        log('   Instala desde: https://nodejs.org/', 'yellow');
+        process.exit(1);
     }
 
-    log(message, color = 'reset') {
-        console.log(`${colors[color]}${message}${colors.reset}`);
-    }
+    // 2. Clonar PixelStreamingInfrastructure si no existe
+    const infraPath = path.join(process.cwd(), 'PixelStreamingInfrastructure');
 
-    question(query) {
-        return new Promise(resolve => this.rl.question(query, resolve));
-    }
-
-    async run() {
-        this.log('\n==============================================', 'blue');
-        this.log('  SETUP DE PIXEL STREAMING - METAHUMAN', 'bold');
-        this.log('==============================================\n', 'blue');
-
-        // 1. Verificar Node.js
-        await this.checkNodeVersion();
-
-        // 2. Verificar/Clonar Pixel Streaming Infrastructure
-        await this.setupPixelStreamingInfra();
-
-        // 3. Configurar variables de entorno
-        await this.setupEnvironment();
-
-        // 4. Hacer ejecutables los scripts
-        await this.makeScriptsExecutable();
-
-        // 5. Instrucciones finales
-        this.showFinalInstructions();
-
-        this.rl.close();
-    }
-
-    async checkNodeVersion() {
+    log('\n2. Verificando Pixel Streaming Infrastructure...', 'blue');
+    if (!fs.existsSync(infraPath)) {
+        log('   Clonando repositorio de Epic Games...', 'yellow');
         try {
-            const version = execSync('node --version', { encoding: 'utf8' }).trim();
-            this.log(`✓ Node.js version: ${version}`, 'green');
-
-            const majorVersion = parseInt(version.slice(1).split('.')[0]);
-            if (majorVersion < 14) {
-                this.log('⚠ Advertencia: Se recomienda Node.js 14 o superior', 'yellow');
-            }
+            execSync(
+                'git clone --depth 1 https://github.com/EpicGamesExt/PixelStreamingInfrastructure',
+                { stdio: 'inherit' }
+            );
+            log('   ✓ Repositorio clonado', 'green');
         } catch (error) {
-            this.log('✗ Node.js no está instalado', 'red');
-            this.log('Instala Node.js desde: https://nodejs.org/', 'yellow');
+            log('   ✗ Error al clonar', 'red');
             process.exit(1);
         }
+    } else {
+        log('   ✓ Ya existe', 'green');
     }
 
-    async setupPixelStreamingInfra() {
-        this.log('\n--- Pixel Streaming Infrastructure ---', 'blue');
+    // 3. Instalar SOLO dependencias runtime de Cirrus (no compilar)
+    const cirrusPath = path.join(infraPath, 'SignallingWebServer');
 
-        const infraPath = path.join(process.cwd(), 'PixelStreamingInfrastructure');
+    log('\n3. Instalando dependencias runtime de Cirrus...', 'blue');
+    log('   (Solo las necesarias para ejecutar, no para compilar)', 'yellow');
 
-        if (fs.existsSync(infraPath)) {
-            this.log('✓ PixelStreamingInfrastructure ya existe', 'green');
+    if (fs.existsSync(cirrusPath)) {
+        try {
+            // Crear package.json mínimo si no existe node_modules
+            const nodeModulesPath = path.join(cirrusPath, 'node_modules');
 
-            const update = await this.question('¿Quieres actualizarlo? (y/N): ');
-            if (update.toLowerCase() === 'y') {
-                try {
-                    this.log('Actualizando repositorio...', 'yellow');
-                    execSync('git pull', { cwd: infraPath, stdio: 'inherit' });
-                    this.log('✓ Repositorio actualizado', 'green');
-                } catch (error) {
-                    this.log('✗ Error al actualizar repositorio', 'red');
+            if (!fs.existsSync(nodeModulesPath)) {
+                log('   Instalando dependencias básicas...', 'yellow');
+
+                // Instalar solo las dependencias críticas para ejecutar
+                const runtimeDeps = [
+                    'express',
+                    'ws',
+                    'yargs',
+                    'log-timestamp'
+                ];
+
+                process.chdir(cirrusPath);
+
+                // Inicializar npm si no hay package.json
+                if (!fs.existsSync(path.join(cirrusPath, 'package.json'))) {
+                    execSync('npm init -y', { stdio: 'ignore' });
                 }
-            }
-        } else {
-            const clone = await this.question('¿Quieres clonar PixelStreamingInfrastructure? (Y/n): ');
-            if (clone.toLowerCase() !== 'n') {
-                try {
-                    this.log('Clonando repositorio...', 'yellow');
-                    execSync(
-                        'git clone https://github.com/EpicGamesExt/PixelStreamingInfrastructure',
-                        { stdio: 'inherit' }
-                    );
-                    this.log('✓ Repositorio clonado correctamente', 'green');
 
-                    // Instalar dependencias de Cirrus
-                    const cirrusPath = path.join(infraPath, 'SignallingWebServer');
-                    if (fs.existsSync(cirrusPath)) {
-                        this.log('Instalando dependencias de Cirrus...', 'yellow');
-                        try {
-                            execSync('npm install', { cwd: cirrusPath, stdio: 'inherit' });
-                            this.log('✓ Dependencias instaladas', 'green');
-                        } catch (error) {
-                            this.log('⚠ Error al instalar dependencias. Hazlo manualmente.', 'yellow');
-                        }
+                // Instalar dependencias una por una (más robusto)
+                for (const dep of runtimeDeps) {
+                    try {
+                        log(`   Instalando ${dep}...`, 'yellow');
+                        execSync(`npm install ${dep} --save --legacy-peer-deps`, {
+                            stdio: 'ignore',
+                            timeout: 60000
+                        });
+                    } catch (err) {
+                        log(`   ⚠ Error con ${dep}, continuando...`, 'yellow');
                     }
-                } catch (error) {
-                    this.log('✗ Error al clonar repositorio', 'red');
-                    this.log('Clona manualmente: git clone https://github.com/EpicGamesExt/PixelStreamingInfrastructure', 'yellow');
                 }
+
+                process.chdir(process.cwd().replace('/PixelStreamingInfrastructure/SignallingWebServer', ''));
+                log('   ✓ Dependencias instaladas', 'green');
+            } else {
+                log('   ✓ Dependencias ya instaladas', 'green');
             }
-        }
-
-        this.config.cirrusPath = infraPath;
-    }
-
-    async setupEnvironment() {
-        this.log('\n--- Configuración de Variables de Entorno ---', 'blue');
-
-        const envPath = path.join(process.cwd(), '.env');
-        const envExamplePath = path.join(process.cwd(), '.env.example');
-
-        if (fs.existsSync(envPath)) {
-            this.log('✓ Archivo .env ya existe', 'green');
-            const overwrite = await this.question('¿Quieres reconfigurarlo? (y/N): ');
-            if (overwrite.toLowerCase() !== 'y') {
-                return;
-            }
-        }
-
-        this.log('\nConfiguración de puertos:', 'yellow');
-        const httpPort = await this.question('Puerto HTTP [80]: ') || '80';
-        const streamerPort = await this.question('Puerto Streamer [8888]: ') || '8888';
-
-        this.log('\nConfiguración de Unreal Engine:', 'yellow');
-        this.log('(Déjalo vacío si lo configurarás después)', 'yellow');
-        const uePath = await this.question('Ruta al ejecutable de UE [vacío]: ') || '';
-
-        // Crear archivo .env
-        const envContent = fs.readFileSync(envExamplePath, 'utf8')
-            .replace(/HTTP_PORT=.*/,`HTTP_PORT=${httpPort}`)
-            .replace(/STREAMER_PORT=.*/, `STREAMER_PORT=${streamerPort}`)
-            .replace(/UE_EXE_PATH=.*/, `UE_EXE_PATH=${uePath}`);
-
-        fs.writeFileSync(envPath, envContent);
-        this.log('✓ Archivo .env creado', 'green');
-    }
-
-    async makeScriptsExecutable() {
-        if (process.platform !== 'win32') {
-            try {
-                execSync('chmod +x scripts/*.js', { stdio: 'ignore' });
-                this.log('✓ Scripts marcados como ejecutables', 'green');
-            } catch (error) {
-                // No es crítico
-            }
+        } catch (error) {
+            log('   ⚠ Advertencia: Algunas dependencias pueden faltar', 'yellow');
+            log('   Continuando...', 'yellow');
         }
     }
 
-    showFinalInstructions() {
-        this.log('\n==============================================', 'green');
-        this.log('  ✓ SETUP COMPLETADO', 'bold');
-        this.log('==============================================\n', 'green');
+    // 4. Verificar que cirrus.js existe
+    log('\n4. Verificando Cirrus...', 'blue');
+    const cirrusJs = path.join(cirrusPath, 'cirrus.js');
 
-        this.log('Próximos pasos:', 'blue');
-        this.log('1. Configura tu proyecto de Unreal Engine para Pixel Streaming', 'yellow');
-        this.log('   - Habilita el plugin de Pixel Streaming', 'yellow');
-        this.log('   - Configura el MetaHuman en tu escena', 'yellow');
-        this.log('   - Compila el proyecto', 'yellow');
-
-        this.log('\n2. Actualiza la ruta UE_EXE_PATH en el archivo .env', 'yellow');
-
-        this.log('\n3. Inicia el servidor:', 'yellow');
-        this.log('   npm start', 'green');
-
-        this.log('\n4. Accede al frontend:', 'yellow');
-        this.log('   http://localhost:' + (this.config.httpPort || '80'), 'green');
-
-        this.log('\n5. Para detener todo:', 'yellow');
-        this.log('   npm stop', 'green');
-
-        this.log('\nDocumentación adicional en: docs/SETUP.md\n', 'blue');
-    }
-}
-
-// Ejecutar
-if (require.main === module) {
-    const setup = new Setup();
-    setup.run().catch(error => {
-        console.error('Error durante el setup:', error);
+    if (fs.existsSync(cirrusJs)) {
+        log('   ✓ cirrus.js encontrado (pre-compilado)', 'green');
+    } else {
+        log('   ✗ cirrus.js no encontrado', 'red');
+        log('   El repositorio puede estar corrupto', 'yellow');
         process.exit(1);
-    });
+    }
+
+    // 5. Crear archivo .env
+    log('\n5. Configurando variables de entorno...', 'blue');
+    const envPath = path.join(process.cwd(), '.env');
+    const envExamplePath = path.join(process.cwd(), '.env.example');
+
+    if (!fs.existsSync(envPath)) {
+        if (fs.existsSync(envExamplePath)) {
+            fs.copyFileSync(envExamplePath, envPath);
+            log('   ✓ Archivo .env creado', 'green');
+            log('   Edita .env y configura UE_EXE_PATH', 'yellow');
+        }
+    } else {
+        log('   ✓ Archivo .env ya existe', 'green');
+    }
+
+    // 6. Instrucciones finales
+    log('\n==============================================', 'green');
+    log('  ✓ SETUP COMPLETADO', 'bold');
+    log('==============================================\n', 'green');
+
+    log('Próximos pasos:', 'blue');
+    log('1. Configura tu proyecto de Unreal Engine', 'yellow');
+    log('   - Habilita el plugin de Pixel Streaming', 'yellow');
+    log('   - Compila tu proyecto', 'yellow');
+
+    log('\n2. Edita el archivo .env:', 'yellow');
+    log('   UE_EXE_PATH=C:/Ruta/A/Tu/Proyecto.exe', 'green');
+
+    log('\n3. Inicia el servidor:', 'yellow');
+    log('   npm start', 'green');
+
+    log('\n4. Abre el navegador:', 'yellow');
+    log('   http://localhost\n', 'green');
 }
 
-module.exports = Setup;
+main().catch(error => {
+    console.error('Error durante el setup:', error);
+    process.exit(1);
+});
