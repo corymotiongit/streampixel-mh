@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node scripts/start.js",
     "stop": "node scripts/stop.js",
-    "setup": "node scripts/setup.js"
+    "setup": "node scripts/setup.js",
+    "install-frontend": "cd frontend && npm install"
   },
   "keywords": [
     "unreal-engine",

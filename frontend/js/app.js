@@ -1,6 +1,6 @@
 /**
  * MetaHuman Pixel Streaming Client
- * Simplified frontend for single-user pixel streaming with microphone support
+ * Implementación simplificada y robusta basada en el protocolo de Epic Games  
  */
 
 class PixelStreamingClient {
@@ -9,11 +9,14 @@ class PixelStreamingClient {
         this.peerConnection = null;
         this.localStream = null;
         this.isMicActive = false;
+        this.dataChannel = null;
 
         // Configuración WebRTC
         this.config = {
             sdpSemantics: 'unified-plan',
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
         };
 
         // Elementos del DOM
@@ -39,7 +42,7 @@ class PixelStreamingClient {
     setupEventListeners() {
         this.elements.micToggle.addEventListener('click', () => this.toggleMicrophone());
 
-        // Auto-reconexión si se pierde la conexión
+        // Cleanup en cierre
         window.addEventListener('beforeunload', () => this.disconnect());
     }
 
@@ -50,6 +53,8 @@ class PixelStreamingClient {
         const url = `${protocol}//${host}:${port}`;
 
         this.updateStatus('connecting', 'Conectando al servidor...');
+
+        console.log('Connecting to:', url);
 
         try {
             this.ws = new WebSocket(url);
@@ -65,21 +70,24 @@ class PixelStreamingClient {
     }
 
     onSignalingConnected() {
-        console.log('Conectado al servidor de señalización');
+        console.log('✓ Conectado al servidor de señalización');
         this.updateStatus('connecting', 'Configurando transmisión...');
 
-        // Crear peer connection
-        this.createPeerConnection();
+        // Enviar mensaje de configuración (protocolo de Epic)
+        this.sendMessage({
+            type: 'config',
+            peerConnectionOptions: this.config
+        });
     }
 
     async onSignalingMessage(event) {
         try {
             const message = JSON.parse(event.data);
-            console.log('Mensaje recibido:', message.type);
+            console.log('← Mensaje recibido:', message.type);
 
             switch (message.type) {
                 case 'config':
-                    this.handleConfig(message);
+                    await this.handleConfig(message);
                     break;
                 case 'offer':
                     await this.handleOffer(message);
@@ -90,31 +98,67 @@ class PixelStreamingClient {
                 case 'iceCandidate':
                     await this.handleIceCandidate(message);
                     break;
+                case 'playerCount':
+                    console.log('Jugadores conectados:', message.count);
+                    break;
                 default:
-                    console.log('Tipo de mensaje desconocido:', message.type);
+                    console.log('Tipo de mensaje no manejado:', message.type);
             }
         } catch (error) {
             console.error('Error al procesar mensaje:', error);
         }
     }
 
-    createPeerConnection() {
+    async handleConfig(message) {
+        console.log('Configuración recibida del servidor');
+
+        // Aplicar configuración del servidor si viene
+        if (message.peerConnectionOptions) {
+            Object.assign(this.config, message.peerConnectionOptions);
+        }
+
+        // Crear peer connection después de recibir config
+        await this.createPeerConnection();
+    }
+
+    async createPeerConnection() {
+        if (this.peerConnection) {
+            console.log('Peer connection ya existe');
+            return;
+        }
+
+        console.log('Creando peer connection...');
         this.peerConnection = new RTCPeerConnection(this.config);
 
-        // Manejar tracks remotos (video del UE)
+        // Manejar tracks remotos (video/audio del UE)
         this.peerConnection.ontrack = (event) => {
-            console.log('Track remoto recibido:', event.track.kind);
-            if (event.track.kind === 'video' || event.track.kind === 'audio') {
+            console.log('→ Track remoto recibido:', event.track.kind);
+
+            if (event.streams && event.streams[0]) {
                 this.elements.video.srcObject = event.streams[0];
-                this.hideLoading();
-                this.updateStatus('connected', 'Conectado');
-                this.elements.micToggle.disabled = false;
+
+                // Intentar reproducir
+                this.elements.video.play().then(() => {
+                    console.log('✓ Video reproduciéndose');
+                    this.hideLoading();
+                    this.updateStatus('connected', 'Conectado');
+                    this.elements.micToggle.disabled = false;
+                }).catch(error => {
+                    console.warn('Autoplay bloqueado:', error);
+                    // Esperar interacción del usuario
+                    this.elements.loadingOverlay.style.cursor = 'pointer';
+                    this.elements.loadingOverlay.addEventListener('click', () => {
+                        this.elements.video.play();
+                        this.hideLoading();
+                    }, { once: true });
+                });
             }
         };
 
         // Manejar ICE candidates
         this.peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
+                console.log('→ Enviando ICE candidate');
                 this.sendMessage({
                     type: 'iceCandidate',
                     candidate: event.candidate
@@ -129,11 +173,17 @@ class PixelStreamingClient {
             switch (this.peerConnection.connectionState) {
                 case 'connected':
                     this.updateStatus('connected', 'Conectado');
+                    this.hideLoading();
                     break;
                 case 'disconnected':
-                case 'failed':
-                    this.updateStatus('error', 'Conexión perdida');
+                    this.updateStatus('error', 'Desconectado');
                     this.showLoading();
+                    break;
+                case 'failed':
+                    this.updateStatus('error', 'Conexión fallida');
+                    this.showLoading();
+                    // Intentar reconectar
+                    setTimeout(() => this.reconnect(), 3000);
                     break;
                 case 'closed':
                     this.updateStatus('error', 'Conexión cerrada');
@@ -141,36 +191,41 @@ class PixelStreamingClient {
             }
         };
 
-        // Crear y enviar oferta
-        this.createOffer();
+        // Manejar data channel (opcional, para mensajes con UE)
+        this.peerConnection.ondatachannel = (event) => {
+            console.log('→ Data channel recibido:', event.channel.label);
+            this.dataChannel = event.channel;
+            this.setupDataChannel();
+        };
+
+        console.log('✓ Peer connection creado');
     }
 
-    async createOffer() {
-        try {
-            // Agregar transceivers para recibir audio y video
-            this.peerConnection.addTransceiver('video', { direction: 'recvonly' });
-            this.peerConnection.addTransceiver('audio', { direction: 'recvonly' });
+    setupDataChannel() {
+        if (!this.dataChannel) return;
 
-            const offer = await this.peerConnection.createOffer();
-            await this.peerConnection.setLocalDescription(offer);
+        this.dataChannel.onopen = () => {
+            console.log('✓ Data channel abierto');
+        };
 
-            this.sendMessage({
-                type: 'offer',
-                sdp: offer.sdp
-            });
-        } catch (error) {
-            console.error('Error al crear oferta:', error);
-            this.updateStatus('error', 'Error al iniciar conexión');
-        }
-    }
+        this.dataChannel.onmessage = (event) => {
+            console.log('← Data channel mensaje:', event.data);
+        };
 
-    handleConfig(message) {
-        console.log('Configuración recibida:', message);
-        // Aquí puedes manejar configuración adicional del servidor
+        this.dataChannel.onclose = () => {
+            console.log('Data channel cerrado');
+        };
     }
 
     async handleOffer(message) {
+        console.log('Manejando oferta del servidor...');
+
         try {
+            // Asegurarse de que existe el peer connection
+            if (!this.peerConnection) {
+                await this.createPeerConnection();
+            }
+
             await this.peerConnection.setRemoteDescription({
                 type: 'offer',
                 sdp: message.sdp
@@ -179,21 +234,26 @@ class PixelStreamingClient {
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
 
+            console.log('→ Enviando respuesta');
             this.sendMessage({
                 type: 'answer',
                 sdp: answer.sdp
             });
+
         } catch (error) {
             console.error('Error al manejar oferta:', error);
+            this.updateStatus('error', 'Error en negociación');
         }
     }
 
     async handleAnswer(message) {
         try {
+            console.log('Recibiendo respuesta del servidor...');
             await this.peerConnection.setRemoteDescription({
                 type: 'answer',
                 sdp: message.sdp
             });
+            console.log('✓ Respuesta aceptada');
         } catch (error) {
             console.error('Error al manejar respuesta:', error);
         }
@@ -201,10 +261,11 @@ class PixelStreamingClient {
 
     async handleIceCandidate(message) {
         try {
-            if (message.candidate) {
+            if (message.candidate && this.peerConnection) {
                 await this.peerConnection.addIceCandidate(
                     new RTCIceCandidate(message.candidate)
                 );
+                console.log('✓ ICE candidate agregado');
             }
         } catch (error) {
             console.error('Error al agregar ICE candidate:', error);
@@ -221,63 +282,62 @@ class PixelStreamingClient {
 
     async activateMicrophone() {
         try {
+            console.log('Solicitando acceso al micrófono...');
+
             // Solicitar acceso al micrófono
             this.localStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true
+                    autoGainControl: true,
+                    sampleRate: 48000
                 },
                 video: false
             });
 
             // Agregar el track de audio a la conexión
             const audioTrack = this.localStream.getAudioTracks()[0];
-            const sender = this.peerConnection.addTrack(audioTrack, this.localStream);
 
-            console.log('Micrófono activado');
+            if (this.peerConnection) {
+                this.peerConnection.addTrack(audioTrack, this.localStream);
+                console.log('✓ Micrófono activado');
 
-            this.isMicActive = true;
-            this.updateMicUI();
-
-            // Notificar al servidor que el audio está activo
-            this.sendMessage({
-                type: 'micActive',
-                active: true
-            });
+                this.isMicActive = true;
+                this.updateMicUI();
+            } else {
+                console.error('No hay peer connection disponible');
+                this.localStream.getTracks().forEach(track => track.stop());
+            }
 
         } catch (error) {
             console.error('Error al activar micrófono:', error);
-            alert('No se pudo acceder al micrófono. Verifica los permisos del navegador.');
+            alert('No se pudo acceder al micrófono.\nVerifica los permisos del navegador.');
         }
     }
 
     deactivateMicrophone() {
         if (this.localStream) {
+            console.log('Desactivando micrófono...');
+
             // Detener todos los tracks de audio
             this.localStream.getTracks().forEach(track => track.stop());
 
             // Remover el sender de audio
-            const senders = this.peerConnection.getSenders();
-            senders.forEach(sender => {
-                if (sender.track && sender.track.kind === 'audio') {
-                    this.peerConnection.removeTrack(sender);
-                }
-            });
+            if (this.peerConnection) {
+                const senders = this.peerConnection.getSenders();
+                senders.forEach(sender => {
+                    if (sender.track && sender.track.kind === 'audio') {
+                        this.peerConnection.removeTrack(sender);
+                    }
+                });
+            }
 
             this.localStream = null;
         }
 
         this.isMicActive = false;
         this.updateMicUI();
-
-        // Notificar al servidor que el audio está inactivo
-        this.sendMessage({
-            type: 'micActive',
-            active: false
-        });
-
-        console.log('Micrófono desactivado');
+        console.log('✓ Micrófono desactivado');
     }
 
     updateMicUI() {
@@ -312,6 +372,7 @@ class PixelStreamingClient {
     sendMessage(message) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(message));
+            console.log('→ Mensaje enviado:', message.type);
         } else {
             console.warn('WebSocket no está conectado');
         }
@@ -329,11 +390,24 @@ class PixelStreamingClient {
         // Intentar reconectar después de 5 segundos
         setTimeout(() => {
             console.log('Intentando reconectar...');
-            this.connectToSignalingServer();
+            this.reconnect();
         }, 5000);
     }
 
+    reconnect() {
+        // Limpiar conexión anterior
+        if (this.peerConnection) {
+            this.peerConnection.close();
+            this.peerConnection = null;
+        }
+
+        // Reconectar
+        this.connectToSignalingServer();
+    }
+
     disconnect() {
+        console.log('Desconectando...');
+
         this.deactivateMicrophone();
 
         if (this.peerConnection) {
@@ -350,5 +424,6 @@ class PixelStreamingClient {
 
 // Iniciar la aplicación cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('=== MetaHuman Pixel Streaming Client ===');
     window.pixelStreamingClient = new PixelStreamingClient();
 });
